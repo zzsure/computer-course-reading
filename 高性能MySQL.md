@@ -57,3 +57,12 @@ InnoDB采用的是两阶段锁定协议。在事务执行过程中，随时都�
 - MVCC的实现是通过保存数据在某个时间点的快照来实现的。也就说，不管需要执行多长时间，每个事务看到的数据都是一致的。
 - InnoDB的MVCC，是通过再每行记录后面保存两个隐藏的列来实现的。这两个列，一个保存了行的创建时间，一个保存行的过期时间。当然存储的并不是实际的时间值，而是系统版本号。
 - MVCC只在REPEATABLE READ和READ COMMITTED两个级别下工作
+
+## 1.5 MySQL的存储引擎
+可以用SHOW TABLE STATUS命令显示表的相关信息
+
+### 1.5.1 InnoDB存储引擎
+InnoDB是MySQL的默认事务型引擎
+
+#### InnoDB的历史
+InnoDB是一个很重要的存储引擎，很多个人和公司都对其贡献代码，而不仅仅是Oracle公司的开发团队。一些重要的贡献者包括Google、Yasufumi Kinoshita、Percona、Facebook等
