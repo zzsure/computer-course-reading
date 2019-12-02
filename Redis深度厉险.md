@@ -14,13 +14,15 @@ Redis：Remote Dictionary Service，远程字典服务
 
 ### 1.2.2 5种基础数据结构
 Redis有5种基础数据结构，分别为：string（字符串）、list（列表）、hash（字典）、set（集合）、zset（有序集合）
+
 #### string（字符串）
-- Redis所有的数据结构以唯一的key字符串作为名称，然后通过这个唯一key值来获取相应的value数据，不通类型的数据结构的差异就在于value的结构不一样
-- Redis的字符串是动态字符串，是可以修改的字符串，内部结构的实现类似于Java的ArrayList，实际空间capacity一般高于实际字符串长度len，1M空间冬天扩容
+- Redis所有的数据结构以唯一的key字符串作为名称，然后通过这个唯一key值来获取相应的value数据，不同类型的数据结构的差异就在于value的结构不一样
+- Redis的字符串是动态字符串，是可以修改的字符串，内部结构的实现类似于Java的ArrayList，实际空间capacity一般高于实际字符串长度len，1M空间动态扩容
 - 键值对：set name codehole; get name; exits name; del name; get name;
 - 批量键值对：set name1 codehole; set name2 holycoder; mget name1 name2 name3; mset name1 boy name2 girl name3 unkown; mget name1 name2 name3;
 - 过期和set命令扩展：set name codehole; get name; expire name 5; get name; setex name 5 codehole; get name; setnx name codehole; get name; set nax name holycoder; get name;
 - 计数：set age 30; incr age; incrby age 5; incrby age -5; set codehole 9223372036854775807; incr codehole;
+
 #### list（列表）
 - Redis的列表相当于Java语言里面的LinkedList，注意它是链表不是数组，意味着插入和删除操作非常快，但索引定位很慢
 - Redis的列表结构常用来做异步队列使用，将需要延后处理的任务结构体序列化成字符串，塞进Redis的列表，另一个线程从这个列表中轮训数据进行处理
@@ -522,3 +524,11 @@ Redis Cluster可以为每个主节点设置从节点，主节点发生故障，�
 ### 3.4.9 集群变更感知
 - 目标节点挂掉，客户端抛ConnectionError，重试的节点通过MOVED告知分配的新的节点
 - 运维手动修改了集群信息，主节点切换到其他节点，或者移除了集群，打到旧节点的会报ClusterDown，客户端会关闭所有的连接，清空槽位映射关系表，重新尝试初始化
+
+# 第4篇 拓展篇
+
+## 4.1 耳听八方 — Stream
+- Redis 5.0发布的，它是一个强大的支持多播的可持久化消息队列。消息链表将所有加入的消息都串起来，每个消息都有一个唯一的ID和对应的内容。消息是持久化的，重启后，内容还在
+- 每个Steam都可挂多个消费组，每个消费组有个游标last_delivered_id在Stream数组之上往前移动，表示当前消费组已经消费到哪条消息
+- 每个消费组的状态都是独立的，相互不受影响
+- 消费者内部会有一个状态变量pending_ids，记录当前已被客户端取走，但还没有ack的消息，用来确保客户端至少消费了消息一次
