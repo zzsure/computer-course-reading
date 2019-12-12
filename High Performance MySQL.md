@@ -32,3 +32,9 @@ Transactions aren't enough unless the system passes the ACID test.
 - Consistency: The database should always move from one consistent state to the next.
 - Isolation: The results of a transaction are usually invisible to other transactions until the transaction is complete.
 - Durability: Once committed, a transaction's changes are permanent.
+
+## Isolation levels
+- READ UNCOMMITTED: transactions can view the results of uncommitted transactions.
+- READ COMMITTED: a transaction will see only those changes made by transactions that were already committed when it began, and its changes won't be visible to others until it has committed.
+- REPEATABLE READ: It guarantees that any rows a transaction reads will "look the same" in subsequent reads within the same transaction, but in theory it still allows another tricky problem: phantom reads.
+- SERIALIZABLE: In a nutshell, SERIALIZABLE places a lock on every rrow it reads.
