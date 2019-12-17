@@ -189,4 +189,101 @@ Redis并没有使用之前讲的数据结构来实现键值对数据库，而是
 - Redis中每个对象都由一个redisObject结构表示，type类型，encoding编码，ptr指向底层实现数据结构的指针
 
 ### 8.1.1 类型
-type可以是REDIS_STRING字符串对象，REDIS_LIST列表对象，REDIS_HASH哈希对象，REDIS_SET集合对象，REDIS_ZSET有序集合对象
+- type可以是REDIS_STRING字符串对象，REDIS_LIST列表对象，REDIS_HASH哈希对象，REDIS_SET集合对象，REDIS_ZSET有序集合对象
+- TYPE命令可以看值的对象类型
+
+### 8.1.2 编码和底层实现
+- ptr指向对象的底层实现数据结构，数据结构由对象的encoding决定
+- 使用OBJECT ENCODING可以查看数据库键的值对象的编码
+- 每种类型的对象都至少使用了两种不同的编码
+- 整数：int，embstr编码的简单动态字符串：embstr，简单动态字符串：raw，字典：hashtable，双端链表：linkedlist，压缩列表：ziplist，整数集合：intset，跳跃表和字典：skiplist
+
+## 8.2 字符串对象
+- 字符串的UI想的编码可以是int、raw或者embstr
+- 如果一个字符串保存的是整数值，并且可以用long类型表示，则会使用编码int
+- 如果字符串对象保存的是一个字符串值，并且长度大于39字节，那么使用一个简单动态字符串（SDS）保存这个字符串值，编码设置为raw
+- 如果字符串保存的是一个字符串值，并且字符串长度小于39字节，编码为embstr。embstr编码所需内存分配次数从raw的两次变1次，释放内存只需要1次，所有的数据都在一块连续的内存里面，能更好的利用缓存带来的优势。
+- long double表示的浮点数在redis里面是作为字符串值来保存的
+
+### 8.2.1 编码的转换
+- int编码执行一些命令，对象存的不再是整数值，而是一个字符串，则字符串编码从int变为raw
+- embstr在任何修改命令，都会编码变成raw
+
+### 8.2.2 字符串命令的实现
+SET，GET，APPEND，INCRBYFLOAT，INCRBY，DECRBY，STRLEN，SETRANGE，GETRANGE
+
+## 8.3 列表对象
+- 列表对象编码可以是ziplist或者linkedlist
+- ziplist编码的列表对象使用压缩列表作为底层实现，每个压缩列表节点（entry）保存了一个列表元素。
+- RPUSH命令
+- linkedlist编码的列表使用双端链表作为底层实现，底层的双端链表结构中包含了字符串对象
+- 字符串对象是Redis五中类型的对象中唯一一种会被其他四种对象嵌套的对象
+
+### 8.3.1 编码转换
+当列表对象满足一下两个条件，编码使用ziplist，不满足则使用linkedlist
+- 列表对象保存到 所有字符串元素长度小于64字节
+- 列表对象保存的元素数量小512个
+
+### 8.3.2 列表命令的实现
+LPUSH，RRPUSH，LPOP，RPOP，LINDEX，LLEN，LINSERT，LREM，LTRIM，LSET
+
+## 8.4 哈希对象
+- 哈希对象的编码可以是ziplist或者hashtable
+- ziplist编码的哈希对象使用压缩列表作为底层实现，保存了同一键值对的两个节点总是紧挨着一起，保存键的节点在前，保存值的节点在后。先添加到哈希对象的键值对会被放在压缩列表的表头方向，后添加的被放在压缩列表的表尾方向。
+- HSET命令
+- hashtable编码的哈希对象使用字典作为底层实现，哈希对象中的每个键值对都使用一个字典键值对来保存，字典的每个键都是一个字符串对象，对象中保存了键值对的键，字典的每个值都是一个字符串对象，对象中保存了键值对的值。
+
+### 8.4.1 编码转换
+当哈希对象可以同时满足两个一下条件，则使用ziplist编码。否则使用hashtable
+- 哈希对象保存的所有键值对的键和值字符串长度都小于64字节
+- 哈希对象保存的键值对数量小于512
+
+### 8.4.2 哈希命令的实现
+HSET，HGET，HEXISTS，HDEL，HLEN，HGETALL
+
+## 8.5 集合对象
+- 集合对象的编码可以是intset或者hashtable
+- intset编码的集合对象使用整数集合作为底层实现，集合对象包含的所有元素都被保存在整数集合里面
+- hashtable编码的集合对象使用字典作为底层实现，字典的每个键都是一个字符串对象，每个字符串对象包含了一个集合元素，而字典的值则设为NULL
+- SADD指令
+
+### 8.5.1 编码的转换
+当集合对相关同时满足以下两个条件，对象使用intset编码，不满足则使用hashtable
+- 集合对象保存的所有元素都是整数值
+- 集合对象保存的元素数量不超过512个
+
+### 8.5.2 集合命令的实现
+SADD，SCARD，SISMEMBER，SMEMBERS，SRANDMEMBER，SPOP，SREM
+
+## 8.6 有序集合对象
+- 有序集合的编码可以是ziplist或者skiplist
+- ziplist编码的有序集合对象使用压缩列表作为底层实现，每个集合元素使用两个紧挨在一起的压缩列表节点来保存，第一个节点保存元素的成员，第二个保存元素的分值。分数低的在表头，分数高的在表尾
+- ZADD指令
+- skiplist编码的有序集合列表使用zset结构作为底层实现，一个zset结构同时包含一个字典和一个跳跃表。zset中的zsl跳跃表按分值从小到大保存了所有集合元素，每个跳跃表节点保存了一个集合元素。跳跃表节点object属性保存了元素的成员，节点score属性保存了分值。zset结构中的dict字典为有序集合创建了一个从成员到分数的映射。
+- 有序集合每个元素的成员都是一个字符串对象，而每个元素的分值都是double。两种数据结构都会使用指针共享相同元素的成员和分值。
+
+### 8.6.1 编码的转换
+当有序集合对象可以同时满足以下两个条件，使用ziplist，否则使用skiplist
+- 有序集合保存的元素数量小于128个
+- 有序集合保存的所有元素成员的长度都小于64字节
+
+### 8.6.2 有序集合命令的实现
+ZADD，ZCARD，ZCOUNT，ZRANGE，ZREVRANGE，ZRANK，ZREEM，ZSCORE
+
+## 8.7 类型检查与命令多态
+- 对任何键都可以执行：DEL、EXPIRE、RENAME、TYPE、OBJECT
+- SET、GET、APPEND、STRLEN只能对字符串键执行
+- HDEL、HSET、HGET、LEN只能对哈希键执行
+- RPUSH、LPOP、LINSERT、LLEN只能对列表建
+- SADD、SPOP、SINTER、SCARD只能对集合键执行
+- ZADD、ZCARD、ZRANK、ZSCORE只能对有序集合键执行
+
+### 8.7.1 类型检查的实现
+举个例子：客户端发送LLEN <key>命令，服务器检查键key的值对象是否列表对象，是则对键key执行LLEN命令，否则返回一个类型错误。
+
+### 8.7.2 多态命令的实现
+我们可以认为LEN命令是多态的，只要执行LLEN命令的是列表键，那么无论值对象使用的是ziplist编码还是linkedlist编码，命令都能正常运行。
+
+## 8.8 内存回收
+- C语言并不具备自动回收功能，Redis在自己的对象系统中构建了一个引用计数技术实现内存回收机制。redisObject的refcount属性
+- 创建一个新对象，refcount为1，被一个应用程序使用则加1，不再被程序使用则减1，引用值变为0，对象所占用内存会被释放
