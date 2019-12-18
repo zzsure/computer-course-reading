@@ -38,3 +38,19 @@ Transactions aren't enough unless the system passes the ACID test.
 - READ COMMITTED: a transaction will see only those changes made by transactions that were already committed when it began, and its changes won't be visible to others until it has committed.
 - REPEATABLE READ: It guarantees that any rows a transaction reads will "look the same" in subsequent reads within the same transaction, but in theory it still allows another tricky problem: phantom reads.
 - SERIALIZABLE: In a nutshell, SERIALIZABLE places a lock on every rrow it reads.
+
+## Deadlocks
+A deadlock is when two or more transactions are mutually holding and requesting locks on the same resources, creating a cycle of dependencies.
+
+## Transaction Logging
+Transaction logging helps make transactions more efficient. Instead of updating the tables on disk each time a change occurs, the storage engine can change its in-memory copy of the data. This is very fast.
+
+## Transactions in MySQL
+
+### AUTOCOMMIT
+MySQL operates in AUTOCOMMIT mode by default. This means that unless you've explicitly begun a transaction, it automatically executes each query in a separate transaction.
+
+### Mixing storage engines in transactions
+MySQL doesn't manage transactions at the server level. Instead, the underlying storage engines implement transactions themselves. This means you can't reliably mix different engines in a single transaction.
+
+### implicit and explicit locking
