@@ -54,3 +54,10 @@ MySQL operates in AUTOCOMMIT mode by default. This means that unless you've expl
 MySQL doesn't manage transactions at the server level. Instead, the underlying storage engines implement transactions themselves. This means you can't reliably mix different engines in a single transaction.
 
 ### implicit and explicit locking
+InnoDB uses a two-phase locking protocol. It can acquire locks at any time during a transaction, but it does not release them until COMMIT or ROLLBACK.
+
+## Multiversion Concurrency Control
+MVCC works by keeping a snapshot of the data as it existed at some point in time. This means transactions can see a consistent view of the data, no matter how long they run.
+
+## MySQL's Storage Engines
+When you create a table named MyTable, MySQL stores the table definition in MyTable.frm. You can use the SHOW TABLE STATUS command to display information about tables.
