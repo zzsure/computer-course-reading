@@ -61,3 +61,12 @@ MVCC works by keeping a snapshot of the data as it existed at some point in time
 
 ## MySQL's Storage Engines
 When you create a table named MyTable, MySQL stores the table definition in MyTable.frm. You can use the SHOW TABLE STATUS command to display information about tables.
+
+### The InnoDB Engine
+- You should use InnoDB for your tables unless you have a compelling need to use a different engine.
+
+#### InnoDB's history
+In 2008, the so-called InnoDB plugin was released for MySQL 5.1. This was the next generation of InnoDB created by Oracle, which at that time owned InnoDB but not MySQL.
+
+#### InnoDB overview
+InnoDB stores its data in a series of one or more data files that are collectively known as a tablespace. A tablespace is essentially a black box that InnoDB manages all by itself.

@@ -414,3 +414,44 @@ Redis使用惰性删除和定期删除两种策略
 pubsubPublishMessage函数是PUBLISH命令的实现函数，执行这个函数等同于执行PUBLISH命令，订阅数据库通知的客户端收到的信息就是由这个函数发出的。
 
 # 第10章 RDB持久化
+- 我们将数据库中的非空数据库以及它们的键值对统称为数据库状态
+- Redis提供了RDB持久化功能，这个功能可以将Redis在内存中的数据库状态保存到磁盘里面，避免数据意外丢失
+
+## 10.1 RDB文件的创建与载入
+- 有两个Redis命令可以生成RDB文件，SAVE会阻塞Redis服务器进程，不能处理任何请求，直到RDB文件创建完毕为止，BGSAVE会派生一个子进程，父进程继续处理请求。
+- 创建RDB文件的实际工作是由rdb.c/rdbSave函数完成
+- RDB文件的载入是在服务器启动时自动执行的，由rdb.c/rdbLoad函数完成
+- 如果开启了AOF持久化，优先使用AOF，只有AOF关闭状态，服务器才会使用RDB文件
+
+### 10.1.1 SAVE命令执行时的服务器状态
+执行SAVE，客户端发送的所有命令都会被阻塞。只有执行完SAVE，重新开始接收命令请求之后，客户端发来的命令才会被处理
+
+### 10.1.2 BGSAVE命令执行时的服务器状态
+执行BGSAVE后，客户端的SAVE命令会被服务器拒绝；发送的BGSAVE也会被拒绝；BGREWRITEAOF命令会被延迟到BGSAVE完成后执行。如果BGREWRITEAOF在执行，BGSAVE会被拒绝。
+
+### 10.1.3 RDB文件载入时的服务器状态
+服务器在载入RDB文件期间，会一直处于阻塞状态，知道载入工作完成为止。
+
+## 10.2 自动间隔性保存
+save选项设置多个保存条件，但其中任意一个条件被满足，服务器就会执行BGSAVE命令。save 秒数 至少多少次修改
+
+### 10.2.1 设置保存条件
+根据save所设置的保存条件，设置服务器状态redisServer结构的saveparams数组，每个都是saveparam结构，保存了秒数和修改数
+
+### 10.2.2 dirty计数器和lastsave属性
+dirty计数器记录距离上一次成功执行SAVE命令或者BGSAVE命令之后，服务器对数据库状态进行了多少次修改（包括写入、删除、更新等操作）；lastsave属性是一个UNIX时间戳，记录上一次成功执行SAVE或者BGSAVE的时间。
+
+### 10.2.3 检查保存条件是否满足
+serverCron每100毫秒就会执行一次，有一项就是检查save选项所设置的保存条件是否已经满足，如果满足的话就执行BGSAVE命令。
+
+## 10.3 RDB文件结构
+RDB文件最开头是REDIS字符占5个字节，db_version为4个字节，databases包含着零个或任意多个数据库，EOF长度为1字节标志着正文结束，check_sum是8字节无符号整数，保存着校验和。
+
+### 10.3.1 databases部分
+如果0和3号数据库非空，则创建database 0和database 3，每个非空RDB都可以保存为SELECTDB、db_number、key_value_pairs三个部分。SELECTDB为1字节，当程序读入这个就会知道后面是数据库号码。db_number为1字节、2字节或者5字节，读入后则调用选择数据库命令。key_value_pairs保存了数据库中所有的键值对数据。
+
+### 10.3.2 key_value_pairs部分
+- 不带过期时间的键值对在RDB文件中由TYPE、key、value三部分组成
+- 带过期的时间的键值对在RDB文件中EXPIRETIME_MS、ms、TYPE、key、value
+
+### 10.3.3 value编码
