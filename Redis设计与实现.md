@@ -455,3 +455,54 @@ RDB文件最开头是REDIS字符占5个字节，db_version为4个字节，databa
 - 带过期的时间的键值对在RDB文件中EXPIRETIME_MS、ms、TYPE、key、value
 
 ### 10.3.3 value编码
+- RDB每个value部分都保存了一个值对象，每个值对象的类型都由与之对应的TYPE记录，根据类型的不同，value部分的结构、长度也会有所不同
+  1. 字符串对象
+     1. 如果字符串编码是REDIS_ENCODING_INT，那么可以用ENCODING|integer存储
+     2. 如果字符串对象编码是REDIS_ENCODING_RAW，格式len|string，字符串长度小于等于20字节，被原样存储。大于20字节，被压缩存储
+  2. 列表对象
+     1. TYPE为REDIS_RDB_TYPE_LIST，value保存的是REDIS_ENCODING_LINKEDLIST编码的列表对象
+     2. 格式为：list_length|item1|item2...|itemN
+  3. 集合对象
+     1. TYPE为REDIS_RDB_TYPE_SET，value保存的是REDIS_ENCODING_HT编码的集合对象
+     2. 格式为：set_size|elem1|elem2...|elemN
+  4. 哈希表对象
+     1. TYPE为REDIS_RDB_TYPE_HASH，value就是REDIS_ENCODING_HT编码的集合对象
+     2. 格式为：hash_size|key_value_pair 1|key_value_pair2...|key_value_pair N
+  5. 有序集合对象
+     1. 如果TYPE为REDIS_RDB_TYPE_ZSET，那么value保存的是REDIS_ENCODING_SKIPLIST编码的有序集合对象
+     2. 格式为：sorted_set_size|element1|element2...|elementN
+  6. INTSET编码的集合
+     1. TYPE为REDIS_RDB_TYPE_SET_INTSET，value就是一个整数集合对象
+     2. 先将整数集合转化为字符串对象，然后将这个字符串对象保存在RDB文件里面
+  7. ZIPLIST编码的列表、哈希表或者有序集合
+     1. TYPE为REDIS_RDB_TYPE_LIST_ZIPLIST、REDIS_RDB_TYPE_HASH_ZIPLIST或者REDIS_TYPE_ZSET_ZIPLIST，那么value就是一个压缩列表对象
+     2. 将压缩列表转化为一个字符串对象
+     3. 将转换所得的字符串对象保存在RDB文件中
+
+## 10.4 分析RDB文件
+- 用od命令来分析Redis产生的RDB文件，-c以ASCII打印，-x以十六进制打印
+
+### 10.4.1 不包含任何键值对的RDB文件
+- 五个字节的“REDIS”字符串
+- 四个字节的版本号
+- 一个字节的EOF常量
+- 八个字节的校验和
+
+### 10.4.2 包含字符串的RDB文件
+- 一个一字长的特殊值SELECTDB
+- 一个长度可能为一字节、两字节或者五字节的数据库号码
+- 一个或以上数量的键值对
+
+### 10.4.3 包含带有过期时间的字符串键的RDB文件
+- 一个一字节长的EXPIRETIME_MS特殊值
+- 一个八字节长的过期时间(ms)
+- 一个一字节长的类型(TYPE)
+- 一个键(key)和一个值(value)
+
+### 10.4.4 包含一个集合键的RDB文件
+- 集合的大小
+- 集合元素
+
+### 10.4.5 关于分析RDB文件的说明
+- Redis本身检查工具redis-check-dump
+- -cx调用od命令可以同时以ASCII和十六进制打印
