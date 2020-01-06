@@ -169,3 +169,35 @@ MySQL拥有分层架构，上层是服务器层的服务和查询执行引擎，
 
 ### 2.3.6 绘图的重要性
 使用gnuplot绘制图形，图形可以找出性能尖刺。
+
+## 2.4 基准测试工具
+### 2.4.1 集成式测试工具
+- ab：Apache HTTP服务器基准测试工具。它可以测试HTTP服务器每秒最多可以处理多少请求。
+- http_load：可以通过一个输入文件提供多个URL，进行随机测试
+- JMeter：虽然是设计测试Web应用的，但也可以用于测试其他诸如FTP服务器，或者通过JDBC进行数据库查询测试
+
+### 2.4.2 单组件式测试工具
+- mysqlslap：可以模拟服务器的负载，并输出计时信息
+- MySQL Benchmark Suite(sql-bench)：主要用于测试服务器执行查询的速度
+- Super Smack：用于MySQL和Post过热SQL的基准测试工具，可以提供压力测试和负载生成
+- Database Test Suite：类似某些工业标准测试的测试工具集
+- Percona's TPCC-MySQL Tool：类似TPC-C的基准测试工具集
+- sysbench：一款多线程系统压测工具
+- MySQL内置的BENCHMARK()函数，可以测试某些特定操作的执行速度
+
+## 2.5 基准测试案例
+
+### 2.5.1 http_load
+- http_load -parallel 1 -seconds 10 urls.txt
+- 模拟同时有5个并发用户：http_load -parallel 5 -seconds 10 urls.txt
+- 模拟访问的请求率（比如每秒5次）来压力测试：http_load -rate 5 -seconds 10 urls.txt
+
+### 2.5.2 MySQL基准测试套件
+- MySQL Benchmark Suite，在MySQL安装目录的sql-bench子目录中包含该工具
+- 运行全部测试：./run-all-tests --server=mysql --user=root --log --fast
+- 只进行insert测试：./test-insert
+
+### 2.5.3 sysbench
+- sysbench可以执行多种类型的基准测试，不仅设计用来测试数据库的性能，也可以测试运行数据库的服务器的性能
+- sysbench的CPU基准测试：计算素数直到某个最大值所需要的时间，sysbench --test=cpu --cpu-max-prime=20000 run
+- sysbench的文件I/O基准测试，可以测试系统在不同I/O负载下的性能，对于比较不同的磁盘驱动器、不同的RAID卡、不同的RAID模式很有帮助。测试的数据要比内存大，sysbench --test=fileio --file-total-size=150G prepare来创建数据集，运行文件I/O混合随机读/写基准测试：sysbench --test=fileio --file-total-size=150G --file-test-mode=rndrw --init-rng=on --max-time=300 --max-requests=0 run，可看出每秒请求书和总吞吐量等。sysbench --test=fileio --file-total-size=150G cleanup清除测试文件。
