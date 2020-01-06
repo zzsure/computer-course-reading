@@ -884,3 +884,49 @@ RDB文件最开头是REDIS字符占5个字节，db_version为4个字节，databa
 ### 15.7.3 检测命令丢失
 - 如果主服务器传播给从服务器的写命令半路丢失，那么REPLCONF ACK发送给主服务器的时候，主服务器会意识到丢失，并将重新发送数据
 - 发送缺失数据和部分重同步操作的原理相似，但不同的在于补发缺失数据操作在主从服务器没有断线的情况下执行，而部分重同步在主从服务器断线并重连后执行
+
+# 第16章 Sentinel
+- Sentinel是Redis的高可用性解决方案：由一个或多个Sentinel实例组成的Sentinel系统可以监视任意多个主服务器，以及这些主服务器属下的所有从服务器，并在监视的主服务器进入下线状态时，自动将下线主服务器属下的某个从服务器升级为新的主服务器，然后由新的主服务器代替已下线的主服务器继续处理命令请求
+
+## 16.1 启动并初始化Sentinel
+- redis-sentinel /path/to/your/sentinel.conf 或者 redis-server /path/to/your/sentinel.conf --sentinel
+- 初始化服务器
+- 将普通Redis服务器使用的代码替换成Sentinel专用代码
+- 初始化Sentinel状态
+- 根据给定的配置文件，初始化Sentinel的监视主服务器列表
+- 创建连向主服务器的网络连接
+
+### 16.1.1 初始化服务器
+- Sentinel的本质只是一个运行在特殊模式下的Redis服务器，Sentinel初始化不需要载入RDB或者AOF
+
+### 16.1.2 使用Sentinel专用代码
+- 比如redis服务器端口为redis.h/REDIS_SERVERPORT，而Sentinel是sentinel.c/REDIS_SENTINEL_PORT
+- 普通Redis使用redis.c/redisCommandTable作为服务器的命令表，Sentinel使用sentinel.c/sentinelcmds作为服务器的命令表
+
+### 16.1.3 初始化Sentinel状态
+- 服务器会初始化一个sentinel.c/sentinelState结构，dict *masters键为主服务器的名字，值为指向sentinelRedisInstance结构的指针
+
+### 16.1.4 初始化Sentinel状态的masters属性
+- 每个sentinelRedisInstance代表一个被Sentinel监视的Redis服务器实例，这个实例可以是主服务器、从服务器或者另外一个Sentinel
+
+### 16.1.5 创建连向主服务器的网络连接
+- Sentinel将成为主服务器的客户端，它可以向主服务器发送命令，并从命令回复中获取相关的信息
+- 对于每个被Sentinel监视的主服务器来说，Sentinel会创建两个连向主服务器的异步网络连接
+  1. 一个是命令连接，这个链接专门用于向主服务器发送命令，接收命令回复
+  2. 另一个是订阅连接，这个链接专门用于订阅主服务器的__sentinel__:hello频道
+
+## 16.2 获取主服务器信息
+- Sentinel默认10s向主服务器发送INFO指令，然后分析返回的信息
+- INFO回复的信息，可以获取两方面：
+  1. 关于主服务器本身的信息，包括run_id域记录的服务器运行ID，以及role域记录的服务器角色
+  2. 主服务器下所有从服务器信息
+
+## 16.3 获取从服务器信息
+- 当Sentinel发现主服务器有新的从服务器出现时，Sentinel除了会将这个新的服务器创建相应的实例结构之外，Sentinel还会创建连接到从服务器的命令连接和订阅连接
+- 创建连接后，Sentinel会在默认情况下，10s频率向从服务器发送INFO命令，会提取以下信息：
+  1. 从服务器的运行ID run_id
+  2. 从服务器的角色role
+  3. 主服务器的IP地址master_host，以及主服务器的端口号master_port
+  4. 主服务器的连接状态master_link_status
+  5. 从服务器的优先级slave_priority
+  6. 从服务器的复制偏移量slave_repl_offset
