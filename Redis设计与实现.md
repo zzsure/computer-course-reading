@@ -930,3 +930,21 @@ RDB文件最开头是REDIS字符占5个字节，db_version为4个字节，databa
   4. 主服务器的连接状态master_link_status
   5. 从服务器的优先级slave_priority
   6. 从服务器的复制偏移量slave_repl_offset
+
+## 16.4 向主服务器和从服务器发送信息
+- Sentinel会以每两秒一次频率，通过命令连接向所有被监视的主服务器和从服务器发送命令：PUBLISH __sentinel__:hello "<s_ip>,<s_port>,<s_runid>,<s_epoch>,<m_name>,<m_ip>,<m_port>,<m_epoch>"
+- m_开头的参数记录为主服务器的信息，如果正在监视从服务器，那么就是从服务器正在复制的主服务器信息
+
+## 16.5 接收来自主服务器和从服务器的频道信息
+- 当建立起订阅连接后，向服务器发送SUBSCRIBE __sentinel__:hello，对__sentinel__:hello的订阅会一直持续到Sentinel与服务器连接断开为止
+- 当一个Sentinel从__sentinel__:hello频道收到一条信息时，Sentinel会对这条信息进行解析，提取出信息中的Sentinel IP地址、Sentinel端口号、Sentinel运行ID等八个参数，用于检查：
+  1. 如果信息中记录的Sentinel运行ID和接收的Sentinel的运行ID相同，那么说明这条消息是Sentinel自己发送的，Sentinel将丢弃这条消息，不做进一步处理
+  2. 如果信心中记录的Sentinel运行ID和接收信息的Sentinel的运行ID不相同，那么说明这条信息是监视同一服务器的其他Sentinel发来的，接收信息的Sentinel将根据信息中的各个参数，对相应主服务器的实例结构进行更新
+
+### 16.5.1 更新sentinels字典
+- Sentinel为主服务器的实例结构中的sentinels字典保存了除Sentinel本身之外，所有同样监视这个主服务器的其他Sentinel的资料
+
+### 16.5.2 创建连向其他Sentinel的命令连接
+- 当Sentinel通过频道信息发现一个新的Sentinel时，它不仅会为新Sentinel在sentinels字典创建相应的实例结构，还会创建一个连向新Sentinel的命令连接，而新Sentinel也会同样创建连向这个Sentinel的命令连接
+- 使用命令连接相连的各个Sentinel可以通过向其他Sentinel发送命令请求来进行信息交换，可以实现主观下线检测和客观下线检测
+- Sentinel之间不会创建订阅连接
