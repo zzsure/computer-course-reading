@@ -948,3 +948,41 @@ RDB文件最开头是REDIS字符占5个字节，db_version为4个字节，databa
 - 当Sentinel通过频道信息发现一个新的Sentinel时，它不仅会为新Sentinel在sentinels字典创建相应的实例结构，还会创建一个连向新Sentinel的命令连接，而新Sentinel也会同样创建连向这个Sentinel的命令连接
 - 使用命令连接相连的各个Sentinel可以通过向其他Sentinel发送命令请求来进行信息交换，可以实现主观下线检测和客观下线检测
 - Sentinel之间不会创建订阅连接
+
+## 16.6 检测主观下线状态
+- 实例对PING命令回复可以分为两种情况
+  1. 有效回复：实例返回+PONG、-LOADING、-MASTERDOWN三种回复
+  2. 无效回复：除了以上其他的回复都是无效回复
+- Sentinel配置爱文件中的down-after-milliseconds指定了Sentinel判断实例进入主观下线所需的时间长度
+
+## 16.7 检查客观下线状态
+- 当Sentinel将一个主服务器判断为主观下线之后，为了确认这个主服务器是否真的下线，它会同样监视这一主服务器的其他Sentinel进行询问，当Sentinel从其他Sentinel那里接收到足够数量的已下线判断后，Sentinel就会将从服务器判定为客观下线，并对主服务器执行故障转移操作
+
+### 16.7.1 发送SENTINEL is-master-down-by-addr命令
+- SENTINEL is-master-down-by-addr <ip> <port> <current_epoch> <runid>
+
+### 16.7.2 接收SENTINEL is-master-down-by-addr命令
+- 根据发来的命令参数，检查主服务器是否下线，然后向源Sentinel返回一条包含三个参数的Multi Bulk回复
+- <down_state>: 返回目标Sentinel对主服务器的检查结果，1代表下线，0代表未下线
+- <leader_runid>: *代表命令仅仅用于检测主服务器的下线状态，局部领头Sentinel的运行ID则用于选举领头Sentinel
+- <leader_epoch>: 目标Sentinel的局部领头Sentinel的配置纪元，用于选举领头Sentinel。仅在leader_runid不为*的时候有效
+
+### 16.7.3 接收SENTINEL is-master-down-by-addr命令的回复
+- 当收到其他Sentinel同意主服务器已下线的数量，数量达到配置指定的判断可高管下线所需的数量时，Seentinel会将主服务器实例结构flags属性的SRI_O_DOWN标识打开，表示主服务器已经进入了客观下线状态
+
+## 16.8 选举领头Sentinel
+- 当一个主服务器被判断为客观下线时，监视这个下线主服务器的各个Sentinel会协商，选举一个领头Sentinel，并由领头Sentinel对下线主服务器执行故障转移操作。
+
+## 16.9 故障转移
+- 在已下线主服务器属下的所有从服务器里面，挑选出一个从服务器，并将其转换为主服务器
+- 让已下线主服务器属下的所有从服务器改为复制新的主服务器
+- 将已下线主服务器设置为新的主服务器的从服务器，当这个旧的服务器重新上线时，它就会成为新的主服务器的从服务器
+
+### 16.9.1 选举新的主服务器
+- 在已下线主服务器的属下的所有从服务器中，挑选一个状态良好、数据完整的从服务器，然后向这个从服务器发送SLAVEOF no one命令，将这个从服务器转换成主服务器
+
+### 16.9.2 修改从服务器的复制目标
+- 领头Sentinel向已下线主服务器server1的两个从服务器server3和server4发送SLAVEOF命令，让它们复制新的主服务器server2
+
+### 16.9.3 将旧的主服务器变为从服务器
+- 将已下线的主服务器设置为新的主服务器的从服务器，因为旧的主服务器已下线，所以这种设置是保存在server1对应的实例结构里面的，当server1重新上线时，Sentinel就会向它发送SLAVEOF命令，让它成为server2的从服务器
