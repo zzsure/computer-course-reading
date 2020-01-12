@@ -986,3 +986,53 @@ RDB文件最开头是REDIS字符占5个字节，db_version为4个字节，databa
 
 ### 16.9.3 将旧的主服务器变为从服务器
 - 将已下线的主服务器设置为新的主服务器的从服务器，因为旧的主服务器已下线，所以这种设置是保存在server1对应的实例结构里面的，当server1重新上线时，Sentinel就会向它发送SLAVEOF命令，让它成为server2的从服务器
+
+# 第17章 集群
+## 17.1 节点
+- 一个Redis集群通常由多个节点组成，在刚开始的时候，每个节点都是相互独立的
+- 连接各个节点的工作可以使用CLUSTER MEET命令完成，CLUSTER MEET <ip> <port>
+- 使用CLUSTER NODES可以看节点的集群
+
+### 17.1.1 启动节点
+- 一个节点就是一个运行在集群模式下的Redis服务器，cluster-enabled为yes开启服务器的集群模式
+- 节点处理serverCron的时候会调用clusterCron函数
+
+### 17.1.2 集群数据结构
+- clusterNode结构保存了一个节点的当前状态，比如节点的创建时间、节点的名字、节点当前的配置纪元、节点的IP地址和端口号等等
+- 每个节点都会使用一个clusterNode结构来记录自己的状态，并为集群中的所有其他节点（包括主节点和从节点）都创建一个相应的clusterNode结构，以此来记录其他节点状态
+- clusterNode结构的link属性是一个clusterLink结构，该结构保存了连接节点所需的有关信息，比如套接字描述符，输入缓冲区和输出缓冲区
+- redisClient和clusterLink结构都有自己的套接字描述符和输入、输出缓冲区，区别在于redisClient连接客户端的，clusterLink用于连接节点的
+- 每个节点都保存着一个clusterState结构，这个结构记录了当前节点的视角下，集群目前所处的状态，例如集群是在线还是下线，集群包含多少个节点，集群当前的配置纪元
+
+### 17.1.3 CLUSTER MEET命令的实现
+- 向节点A发送CLUSTER MEET <ip> <port>命令
+- 节点A会为B创建一个clusterNode结构，并将该结构添加到自己的clusterState.nodes字典里面
+- 节点A根据CLUSTER MEET给定的IP和端口号，向B发送一条MEET消息
+- 如果一切顺利，B接收到到A的MEET消息，B为A创建一个clusterNode结构，并将该结构加到自己的clusterState.nodes字典里面
+- 之后，B将向A节点发送一条PONG消息
+- 节点A收到B的PONG说明发送MEET成功了
+- 节点A想节点B发送一条PING命令
+- B通过接收A返回的PING命令，知道刚发送的PONG消息A接收到了，握手完成
+- 之后，A节点将B节点通过Gossip协议传播给集群中的其他节点，让其他节点也与B进行握手
+
+## 17.2 槽指派
+- Redis集群通过分片的方式保存数据库的键值对：集群的整个数据库被分为16384个槽，数据库中的每个键都属于这16384个槽的其中一个，集群中的每个节点都可以处理0个或最多16384个槽
+- 通过向节点发送CLUSTER ADDSLOTS命令，我们可以将一个或多个槽指派给节点负责
+
+### 17.2.1 记录节点的槽指派信息
+- clusterNode结构的slots属性和numslot属性记录了节点负责处理哪些槽
+- 如果slots数组在i上的二进制位为1，标识节点处理槽i，为0则不处理槽i
+- numslots属性则记录节点负责处理的槽的数量
+
+### 17.2.2 传播节点的槽指派信息
+- 一个节点除了会将自己负责处理的槽记录在clusterNode结构的slots属性和numslots属性之外，它还会将自己的slots数组通过消息发送给集群的其他节点，以此来告知其他节点自己目前负责处理哪些槽
+- 集群中的每个节点都会知道数据库中的16384个槽分别指派给了集群中的那些节点
+
+### 17.2.3 记录集群所有槽的指派信息
+- clusterState结构中的slots数组记录了集群所有16384个槽的指派信息
+- slots数组包含16384个项，每个数组都是指向clusterNode结构的指针
+- clusterNode的slots数组记录单节点的槽指派也是必要的，因为当程序需要将某个节点的槽指派发送给其他节点的时候，只需要将这个数组发送就可以了。
+
+### 17.2.4 CLUSTER ADDSLOTS命令的实现
+- 如果有哪怕一个槽被指派给了某个节点，那么返回错误
+- 设置clusterState的slots[i]指针，设置clusterNode结构的slots数组
