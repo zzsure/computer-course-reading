@@ -1036,3 +1036,36 @@ RDB文件最开头是REDIS字符占5个字节，db_version为4个字节，databa
 ### 17.2.4 CLUSTER ADDSLOTS命令的实现
 - 如果有哪怕一个槽被指派给了某个节点，那么返回错误
 - 设置clusterState的slots[i]指针，设置clusterNode结构的slots数组
+
+## 17.3 在集群中执行命令
+- 当客户端向节点发送与数据库有关的命令时，接收命令的节点会计算出命令要处理的数据库建属于哪个槽，并检查这个槽是否派给了自己
+  1. 如果键所在的槽正好就指派给了当前节点，那么节点直接执行这个命令
+  2. 如果键所在的槽没有指派给当前节点，那么节点会向客户端返回一个MOVED错误，指引客户端转向至正确的节点，并在此发送之前想要执行的命令
+
+### 17.3.1 计算键属于哪个槽
+- slot_number(key)函数计算键key属于哪个槽，CRC16(key)&16383，CRC16计算键key的CRC-16校验和
+- 使用CLUSTER KEYSLOT <key>命令可以查看一个给定键属于哪个槽
+
+### 17.3.2 判断槽是否由当前节点负责处理
+- 当节点计算出键所属的槽i之后，节点就会检查自己在clusterState.slots数组中的项i，判断键所在的槽是否由自己负责
+  1. 如果clusterState.slots[i]等于clusterState.myself，那么说明槽i由当前节点负责
+  2. 如果不等于，会根据clusterState.slots[i]指向的clusterNode结构所记录的节点IP和端口号，向客户端返回MOVED错误，指向客户端转向至正在处理槽i的节点
+
+### 17.3.3 MOVED错误
+- MOVED的格式：MOVED <slot> <ip>:<port>
+- 一个集群客户端通常会与集群中的多个节点创建套接字连接，而所谓的节点转向实际上就是换一个套接字来发送命令
+
+### 17.3.4 节点数据库的实现
+- 节点和单机服务器在数据库方面的一个区别是，节点只能使用0号数据库，而单机Redis服务器则没有这个限制
+- 除了将键值对保存在数据库里面之外，节点还会用clusterState结构中的slots_to_keys跳跃表来保存槽和键之间的关系，分值是一个槽号，每个节点的成员都是一个数据库键
+- 通过slots_to_keys可以方便地对属于某个或某些槽的所有数据库键进行批量操作，例如CLUSTER GETKEYSINSLOT <slot> <count>可以返回最多count个属于槽slot的数据库键
+
+## 17.4 重新分片
+- 重新分片操作可以将任意数量已经指派给某个节点（源节点）的槽改为指派给另一个节点（目标节点），并且相关槽所属的键值对也会从源节点被移动到目标节点
+- 重新分片是由集群管理软件redis-trib负责执行的，步骤如下：
+  1. 对目标节点发送CLUSTER SETSLOT <slot> IMPORTING <source_id>命令，让目标节点准备好从源节点导入属于槽slot的键值对
+  2. 对源节点发送CLUSTER SETSLOT <slot> MIGRATING <target_id>命令，让源节点准备好将属于槽slot的键值对迁移至目标节点
+  3. 向源节点发送CLUSTER GETKEYSINSLOT <slot> <count>命令获取最多count个属于槽slot的键值对的键名
+  4. 对于步骤3获取每个键名，都向源节点发送一个MIGRATE <target_ip> <target_port> <key_name> 0 <timeout>命令，将被选中的键原子地从源节点迁移至目标节点
+  5. 重复执行步骤3和步骤4，直到源节点保存的所有属于槽slot的键值对都被迁移至目标节点为止
+  6. redis-trib向集群中的任意一个节点发送CLUSTER SETSLOT <slot> NODE <target_id>命令，将槽slot指派给目标节点，这一指派消息会通过消息发送至整个集群
