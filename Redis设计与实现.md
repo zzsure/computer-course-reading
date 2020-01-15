@@ -1069,3 +1069,18 @@ RDB文件最开头是REDIS字符占5个字节，db_version为4个字节，databa
   4. 对于步骤3获取每个键名，都向源节点发送一个MIGRATE <target_ip> <target_port> <key_name> 0 <timeout>命令，将被选中的键原子地从源节点迁移至目标节点
   5. 重复执行步骤3和步骤4，直到源节点保存的所有属于槽slot的键值对都被迁移至目标节点为止
   6. redis-trib向集群中的任意一个节点发送CLUSTER SETSLOT <slot> NODE <target_id>命令，将槽slot指派给目标节点，这一指派消息会通过消息发送至整个集群
+
+## 17.5 ASK错误
+- 源节点向目标节点迁移一个槽的过程中，可能会出现属于被迁移槽的一部分键值对保存在源节点里面，而另一部分键值保存在目标节点里面。如果客户端发送一条与数据库键有关的命令，源节点会先在自己的数据库里面查找指定的键，如果找到的话，就直接执行客户端发送的命令。如果找不到，源节点向客户端返回ASK错误，指引客户端专项正在导入槽的目标节点。
+
+### 17.5.1 CLUSTER SETSLOT IMPORTING命令的实现
+- clusterState的importing_slots_from[i]的值不为NULL，指向clusterNode结构，表示当前节点正在从clusterNode所代表的节点导入槽i
+
+### 17.5.2 CLUSTER SETSLOT MIGRATING命令的实现
+- clusterState结构的migrating_slots_to[i]的值不为NULL，指向clusterNode结构表示当前节点正在迁移槽i至clusterNode所代表的节点
+
+### 17.5.3 ASK错误
+- 如果节点在自己的数据库找不到key，则会检查自己的clusterState.migrating_slots_to[i]，看键key所属的槽i是否正在迁移，如果槽i在迁移的话，节点会返回客户端一个ASK错误，引导客户端到正在导入槽i的节点去查找key
+
+### 17.5.4 ASK命令
+- 
