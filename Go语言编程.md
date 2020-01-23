@@ -284,4 +284,17 @@ Go语言作为一门全新的静态类型开发语言，拥有如下特性
 - 开发一个排序算法的比较程序，USAGE: sorter -i <in> -o <out> -a <qsort|bubblesort>
 
 ### 2.7.1 程序结构
-- 
+- 我们将函数分为两类，主程序和排序算法函数
+
+### 2.7.2 主程序
+- 主程序需要做的步骤：
+  1. 获取并解析命令行输入
+  2. 从对应文件中读取输入数据
+  3. 调用对应的排序函数
+  4. 将排序的结果输出到对应的文件中
+  5. 打印排序锁花费时间的信息
+- Go提供解析命令行参数flag包
+- 程序需要输入参数，不能用go run跑，需要编译，go build sorter.go
+- 读入输入文件，readValues，os、io、bufio、strconv，defer关闭文件句柄
+- 写到输出文件，writeValues
+- 算法实现，bubblesort.go，bubblesort_test.go，qsort.go，qsort_test.go
